@@ -5,7 +5,7 @@ from gymnasium import spaces
 
 
 class SweepingRobotEnv(gym.Env):
-    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 4}
+    metadata = {"render_modes": ["human", "rgb_array"], "render_fps": 30}
 
     def __init__(self, render_mode=None, size=5):
         super().__init__()
@@ -25,7 +25,7 @@ class SweepingRobotEnv(gym.Env):
         # 此处仅仅是一个占位符，或者是冷启动状态
         self._agent_location = np.array([0, 0])
         # 垃圾、充电桩和障碍物的位置
-        self._trash_location = np.array([5, 4])
+        self._trash_location = np.array([4, 4])
         self._charging_station_location = np.array([0, 0])
         self._obstacle_location = np.array([2, 2])
 
@@ -34,6 +34,21 @@ class SweepingRobotEnv(gym.Env):
 
         self.window = None
         self.clock = None
+
+        self.icons = {}
+
+        def load_icon(name, file):
+            img = pygame.image.load(file)
+            img = pygame.transform.scale(
+                img,
+                (int(self.window_size / self.size), int(self.window_size / self.size)),
+            )
+            self.icons[name] = img
+
+        load_icon("robot", "icons/robot.png")
+        load_icon("trash", "icons/trash.png")
+        load_icon("charger", "icons/charger.png")
+        load_icon("obstacle", "icons/block.png")
 
     def _get_obs(self):
         """返回当前 agent 的位置
@@ -58,7 +73,7 @@ class SweepingRobotEnv(gym.Env):
             ),
         }
 
-    def reset(self, seed=None, options=None):
+    def reset(self, init_pos=None, seed=None, options=None):
         # 处理 Gymnasium 内部的种子等
         super().reset(seed=seed)
 
@@ -100,12 +115,14 @@ class SweepingRobotEnv(gym.Env):
         info = self._get_info()
 
         # 对于 RecordVideo，不需要在 reset 时调用 _render_frame
-        # if self.render_mode == "human":
-        #     self._render_frame()
+        if self.render_mode == "human":
+            self._render_frame()
 
         return observation, info
 
     def step(self, action):
+        reward = 0.0  # 默认奖励，避免未赋值情况
+
         direction_vectors = {
             0: np.array([-1, 0]),  # 上
             1: np.array([1, 0]),  # 下
@@ -117,11 +134,10 @@ class SweepingRobotEnv(gym.Env):
         # 限定元素在 [0, size-1] 范围内
         self._agent_location = np.clip(self._agent_location, 0, self.size - 1)
 
-        reward = -0.1
         if np.array_equal(self._agent_location, self._obstacle_location):
             self._agent_location = previous_location
-            reward = -0.5
 
+        # 定义终止符号
         terminated = False
         if np.array_equal(self._agent_location, self._trash_location):
             reward = 5.0
@@ -130,14 +146,18 @@ class SweepingRobotEnv(gym.Env):
             reward = 1.0
             terminated = True
 
+        # 设置截断符号
         truncated = False
         observation = self._get_obs()
         info = self._get_info()
 
         # 对于 RecordVideo，不需要在 step 时主动调用 _render_frame
         # RecordVideo 包装器会在需要时调用 env.render()
-        # if self.render_mode == "human":
-        #     self._render_frame()
+        if self.render_mode == "human":
+            self._render_frame()
+
+        self._last_action = action
+        self._last_reward = reward
 
         return observation, reward, terminated, truncated, info
 
@@ -155,61 +175,45 @@ class SweepingRobotEnv(gym.Env):
         if self.window is None and self.render_mode == "human":
             pygame.init()
             pygame.display.init()
-            self.window = pygame.display.set_mode((self.window_size, self.window_size))
-            pygame.display.set_caption("扫地机器人环境")
+            self.window = pygame.display.set_mode(
+                (self.window_size + 300, self.window_size)
+            )
+            pygame.display.set_caption("Sweeping Robot Env")
+
         if self.clock is None and self.render_mode == "human":
             self.clock = pygame.time.Clock()
 
-        # 对于 rgb_array 模式，我们也需要一个 Surface 来绘制，即使不显示窗口
-        # 因此，如果Pygame未初始化，我们进行初始化
-        if pygame.display.get_init() == 0:  # 检查Pygame显示模块是否已初始化
-            pygame.init()  # 初始化所有Pygame模块
-            # 我们不需要为rgb_array创建实际窗口，但需要一个活动的显示模式来使用某些pygame函数
-            # pygame.display.set_mode((1,1), pygame.NOFRAME) # 一个虚拟的不可见窗口
+        if pygame.display.get_init() == 0:
+            pygame.init()
 
-        canvas = pygame.Surface((self.window_size, self.window_size))
+        # 初始化字体
+        if not hasattr(self, "_info_font"):
+            pygame.font.init()
+            self._info_font = pygame.font.SysFont("Arial", 20)
+
+        # 创建 canvas
+        canvas = pygame.Surface((self.window_size + 300, self.window_size))
         canvas.fill((255, 255, 255))
         pix_square_size = self.window_size / self.size
 
-        pygame.draw.rect(
-            canvas,
-            (0, 255, 0),
-            pygame.Rect(
-                pix_square_size * self._trash_location[1],
-                pix_square_size * self._trash_location[0],
-                pix_square_size,
-                pix_square_size,
-            ),
-        )
-        pygame.draw.rect(
-            canvas,
-            (0, 0, 255),
-            pygame.Rect(
-                pix_square_size * self._charging_station_location[1],
-                pix_square_size * self._charging_station_location[0],
-                pix_square_size,
-                pix_square_size,
-            ),
-        )
-        pygame.draw.rect(
-            canvas,
-            (100, 100, 100),
-            pygame.Rect(
-                pix_square_size * self._obstacle_location[1],
-                pix_square_size * self._obstacle_location[0],
-                pix_square_size,
-                pix_square_size,
-            ),
-        )
-        pygame.draw.circle(
-            canvas,
-            (255, 0, 0),
-            (
-                (self._agent_location[1] + 0.5) * pix_square_size,
-                (self._agent_location[0] + 0.5) * pix_square_size,
-            ),
-            pix_square_size / 3,
-        )
+        # 绘制元素图标
+        def draw_icon(name, pos):
+            if name in self.icons:
+                icon = self.icons[name]
+                canvas.blit(
+                    icon,
+                    (
+                        pos[1] * pix_square_size,
+                        (self.size - 1 - pos[0]) * pix_square_size,
+                    ),
+                )
+
+        draw_icon("trash", self._trash_location)
+        draw_icon("charger", self._charging_station_location)
+        draw_icon("obstacle", self._obstacle_location)
+        draw_icon("robot", self._agent_location)
+
+        # 绘制网格
         for x in range(self.size + 1):
             pygame.draw.line(
                 canvas,
@@ -226,26 +230,87 @@ class SweepingRobotEnv(gym.Env):
                 width=1,
             )
 
+        # 绘制右侧信息区域背景
+        pygame.draw.rect(
+            canvas,
+            (240, 240, 240),
+            pygame.Rect(self.window_size, 0, 300, self.window_size),
+        )
+
+        # 显示 agent 状态信息
+        info_lines = []
+        if hasattr(self, "_last_action"):
+            action_name = ["UP", "DOWN", "LEFT", "RIGHT"][self._last_action]
+            info_lines.append(f"Action: {action_name}")
+        if hasattr(self, "_last_reward"):
+            info_lines.append(f"Reward: {self._last_reward:.1f}")
+        info_lines.append(
+            f"Pos: ({int(self._agent_location[0] + 1)}, {int(self._agent_location[1] + 1)})"
+        )
+
+        for i, line in enumerate(info_lines):
+            text_surf = self._info_font.render(line, True, (0, 0, 0))
+            canvas.blit(text_surf, (self.window_size + 10, 20 + i * 30))
+
+        # 渲染输出
         if self.render_mode == "human":
             self.window.blit(canvas, canvas.get_rect())
             pygame.event.pump()
             pygame.display.update()
             self.clock.tick(self.metadata["render_fps"])
-            return None  # Human mode rendering doesn't return the frame array
+            return None
         elif self.render_mode == "rgb_array":
-            # 将 Pygame Surface 转换为 Numpy 数组
-            # Pygame的坐标轴与通常的图像数组约定可能不同，transpose用于调整
             return np.transpose(
                 np.array(pygame.surfarray.pixels3d(canvas)),
-                axes=(1, 0, 2),  # (H, W, C) -> (W, H, C) then transpose to (H, W, C)
+                axes=(1, 0, 2),
             )
 
     def close(self):
         if self.window is not None:
             pygame.display.quit()
-            # pygame.quit() # pygame.quit()会卸载所有pygame模块，如果其他地方还需要pygame，可能会出问题
+            # pygame.quit() # pygame.quit()会卸载所有pygame模块，如果其他地方还需要 pygame，可能会出问题
             self.window = None
         # 确保在所有pygame操作完成后才调用pygame.quit()
-        # 对于RecordVideo, 只要display模块关闭即可，pygame.quit()可以在程序完全结束时调用
-        if pygame.get_init():  # 检查pygame是否已初始化
+        # 对于 RecordVideo, 只要 display 模块关闭即可，pygame.quit()可以在程序完全结束时调用
+        if pygame.get_init():  # 检查 pygame 是否已初始化
             pygame.quit()
+
+
+if __name__ == "__main__":
+    env = SweepingRobotEnv(render_mode="human", size=5)
+    q_table = np.zeros((env.size, env.size, env.action_space.n))
+
+    # Q-learning 参数
+    alpha = 0.4  # 学习率
+    gamma = 0.9  # 折扣因子
+    epsilon = 0.3  # 探索率
+    episodes = 1000
+
+    for episode in range(episodes):
+        obs, info = env.reset()
+        done = False
+        total_reward = 0
+
+        while not done:
+            row, col = obs
+            if np.random.rand() < epsilon:
+                action = env.action_space.sample()  # 探索
+                # print(action)
+            else:
+                action = np.argmax(q_table[row, col])  # 利用
+
+            next_obs, reward, terminated, truncated, info = env.step(action)
+            next_row, next_col = next_obs
+
+            # 更新 Q 表
+            q_predict = q_table[row, col, action]
+            q_target = reward + gamma * np.max(q_table[next_row, next_col])
+            q_table[row, col, action] += alpha * (q_target - q_predict)
+
+            obs = next_obs
+            total_reward += reward
+            done = terminated or truncated
+
+        print(f"Episode {episode}, Total Reward: {total_reward}")
+
+    env.close()
