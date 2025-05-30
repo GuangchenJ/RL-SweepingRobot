@@ -430,12 +430,12 @@
   \newcommand{\versionname}{\citshape 版本：}
   \newcommand{\notename}{笔记}
   \renewcommand*{\proofname}{证明}
-  \newcommand{\definitionname}{定义}
-  \newcommand{\theoremname}{定理}
+  \newcommand{\definitionname}{}
+  \newcommand{\theoremname}{}
   \newcommand{\axiomname}{公理}
   \newcommand{\postulatename}{公设}
   \newcommand{\lemmaname}{引理}
-  \newcommand{\propositionname}{命题}
+  \newcommand{\propositionname}{}
   \newcommand{\corollaryname}{推论}
   \newcommand{\examplename}{例题} %
   \newcommand{\instancename}{示例} %
@@ -964,7 +964,7 @@
               {
                 \csname #1name\endcsname~%
                 \ifdef{\thetcbcounter}{\thetcbcounter}{}%
-                \ifblank{#2}{}{\ (#2)}
+                \ifblank{#2}{}{#2}
               }
           }
       },

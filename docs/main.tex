@@ -38,227 +38,74 @@
 
 \mainmatter%
 
-\chapter{学习动态（Learning Dynamics）}
+\chapter{环境设置}
 
-学习动态（Learning Dynamics）通常是一个总称，用于描述特定的因素如何影响模型预测。
-但在本文中，我们跟随论文 Learning Dynamics of {LLM} Finetuning~\cite{DBLP:conf/iclr/RenS25} 的思路，探究“how the change in model's parameter \(\bm{\theta}\) influences the corresponding change in \(f_{\bm{\theta}}\)”，也就是 \(\textcolor{cyan}{\triangle \bm{\theta}}\) 和 \(\textcolor{orange}{\triangle f_{\bm{\theta}}}\) 之间的关系。
+\section{扫地机器人（Sweeping Robot）}
 
-但在这里，我们需要复习一下利用梯度下降（gradient descent, GD）更新模型参数的过程。
+\begin{definition*}{环境描述}
+\# 问题描述
 
-\section{梯度下降（Gradient Descent）简介}
+    设计一个扫地机器人环境，模拟机器人在 \(5 \times 5\) 的离散网格中进行自主清扫与充电的任务。该环境共有 \(5 \times 5 = 25\) 个格子，构成了机器人的观测空间。机器人（Agent）是主要的控制对象，能够在这些格子之间进行移动。为了增加任务的复杂性和趣味性，环境中还包含了多个元素，包括垃圾、充电桩和障碍物，每个元素的设置都会影响机器人的行为决策。
 
-\input{chapers/learning-dynamics/gradient-descent-intro.tex}
-
-\section{学习动态的定义}
-
-与梯度下降中的定义类似，一般来说我们的深度学习模型都是通过梯度下降来进行参数更新。
-这里我们以一个样本的随机梯度下降（SGD）为例进行展示，在第 \(t \to t+1\) 次迭代中，模型参数 \(\bm{\theta}_{t}\) 在样本对（sample pair） \(\left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right)\) 的影响下以 \(\eta\) 的学习率更新，我们可以通过公式将这一环节描述为：
-\begin{equation}\label{eq:SGD-loss_iterative_update}
-    \triangle \bm{\theta} \coloneq \bm{\theta}^{t+1} - \bm{\theta}^{t} = - \eta \left[ \nabla_{\bm{\theta}} \mathcal{L} \left( f_{\bm{\theta}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \right]^{\top} ; \quad \triangle f_{\bm{\theta}} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \coloneq f_{\bm{\theta}^{t+1}} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) - f_{\bm{\theta}^{t}} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)
-\end{equation}
-
-\begin{remark}
-    这里的 \(\textcolor{cyan}{u}\) 代表 update，\(\textcolor{orange}{o}\) 代表 output。
-\end{remark}
-
-简单来说，Ren et al.~\cite{DBLP:conf/iclr/RenS25} 处理的问题为：
-
-\begin{tcolorbox} 
-    \textit{After an GD update on \textcolor{cyan}{\(\bm{\mathsf{x}}_{u}\)}, how does the model's prediction on \textcolor{orange}{\(\bm{\mathsf{x}}_{o}\)} change?}
-\end{tcolorbox}
-
-我们先从一个标准的监督学习问题入手，作为热身。
-在这个问题中，模型的任务是学习如何将输入 \(\bm{\mathbf{x}}\) 映射到预测输出 \(\bm{\mathbf{y}} = \left( y_{1}, y_{2}, \dots, y_{L} \right) \in \mathcal{V}^{L} \)。
-这里 \(\mathcal{V}\) 是一个大小为 \(V\) 的“词汇表”（vocabulary），也就是所有可能输出的单词、符号或标签的集合。
-
-\rcomment[\textbf{举个例子}]{
+\# 在这个环境中有以下组成部分：
     \begin{itemize}
-        \item \textbf{文本生成任务}
+        \item 垃圾 (Trash): 位于网格的 \(\left( 5, 4 \right)\)（索引从 \(1\) 开始）。当机器人到达这个位置时，获得 \(+5\) 奖励，回合结束。
+        \item 充电桩 (Charger): 位于网格的 （索引从 \(1\) 开始）。当机器人到达这个位置时，获得 \(+1\) 奖励，回合结束。
+        \item 障碍物 (Obstacle): 位于网格的 \(\left( 3, 3 \right)\)（索引从 \(1\) 开始）。机器人无法进入该格子。
     \end{itemize}
 
-    假设我们让模型生成一句英文句子，比如：
-    \[
-        \texttt{I love cats.}
-    \]
-    我们的模型的词汇表可能长这样：
-    \[
-        \mathcal{V} = \left\{ \texttt{<PAD>}, \texttt{<START>}, \text{<END>}, \texttt{I}, \texttt{love}, \texttt{cats}, \texttt{dogs}, \texttt{eat}, \texttt{sleep}, \cdots \right\}
-    \]
-    我们希望的模型输出是：
-    \[
-        \bm{\mathsf{y}} = \left( y_{1}, y_{2}, \dots, y_{6} \right) = \left( \texttt{<START>}, \texttt{I}, \texttt{love}, \texttt{cats}, \texttt{.}, \texttt{<END>} \right)
-    \]
-    这个序列的长度 \(L=6\)。
-    这里 vocabulary 的大小我们可以假定是 \(V=10,000\)，代表有 \(10,000\) 个单词（包括 \(\texttt{<PAD>}, \texttt{<START>}, \text{<END>}\) 等特殊标记）。
-
-    \begin{itemize}
-        \item \textbf{分类任务（以 MNIST 数据集为例）}
-    \end{itemize}
-
-    输入 \(\bm{\mathsf{x}} \in \mathbb{R}^{784}\) 是一个 \(28 \times 28 = 784\) 维的向量，表示一张手写数字的图像。
-    而输出的序列的长度 \(L=1\)，也就是单个标签的分类结果。
-    在这里，vocabulary 指的是所有可能的数字标签 \(\mathcal{V} = \left\{ 0, 1, \dots, 0 \right\}\)，\(V=10\)。
-}
-
-模型通常会先生成一个叫做 logits 的矩阵 \(\bm{\mathsf{z}} = h_{\bm{\theta}} \left( \bm{\mathsf{x}} \right) \in \mathbb{R}^{V \times L}\)，是具有参数 \(\bm{\theta}\) 的模型对输入 \(\bm{\mathsf{x}}\) 的输出结果，这里是一个未能归一化得分的矩阵，称为 logits。
-对于文本生成任务，其中每一列代表一句话中的一个位置的预测，每一行代表一个词汇表中的单词。
-而对于分类任务，你可以理解为每一列代表对于一张图片的预测结果，每一行代表一个可能的数字标签。
-
-接下来，模型会对这个 logits 矩阵的每一列 \(\bm{\mathsf{z}}^{(i)}\) 进行 \texttt{Softmax} 操作，得到一个概率分布：
-\begin{equation}\label{eq:softmax}
-    \mathtt{Softmax} \left( \bm{\mathsf{z}}^{(i)} \right)_{j} = \hat{y}^{(i)}_{j} = \frac{\exp \left( z^{(i)}_{j} \right)}{\sum_{k=1}^{V} \exp \left( z^{(i)}_{k} \right)}; \quad i = 1, 2, \dots, V
-\end{equation}
-其中，\(z^{(i)}_{j}\) 是第 \(i\) 列 \(\bm{\mathsf{z}}^{(i)}\) 中的第 \(j\) 个分量。
-
-我们可以通过观察 \(\log \pi_{\bm{\theta}} \left( \bm{\mathsf{y}} \mid \bm{\mathsf{x}} \right)\)，即给定输入 \(\bm{\mathsf{x}}\) 的情况下，预测输出 \(\bm{\mathsf{y}}\) 的概率，来跟踪模型的置信度（预测的结果是正确的概率）的变化。
-
-\subsection{逐步影响分解（Per-step influence decomposition）}
-
-我们可以定义公式 (\ref{eq:SGD-loss_iterative_update}) 对应的学习动态（learning dynamic）为：
-\begin{equation}\label{eq:SGD-learning_dynamic}
-    \triangle \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\textsf{x}_{o}}} \right) \coloneq \log \pi_{\bm{\theta}^{t+1}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\textsf{x}_{o}}} \right) - \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\textsf{x}_{o}}} \right)
-\end{equation}
-
-为了简单，作者首先选择了 MNIST 数据集作为例子，那么当然此时为了简化，假定 \(L=1\)~\footnote{对于 \(L > 1\) 的情况也是成立的，详细可以参考证明中的步骤进行扩展，进行简单的 \(L\) 次加法就可以。}。
-Ren et al.~\cite{DBLP:conf/iclr/RenS25} 提到了，这个内容是对 Ren et al.~\cite{DBLP:conf/iclr/RenGS22} 的一个结果版本。
-
-% 为了简化表示和符号简洁，这里将 \(\pi_{\bm{\theta}^{t}}\) 用 \(\pi^{t}\) 来代替表示。
-
-\begin{proposition}\label{prop:one_step_dynamics_decompose}
-令 \(\bm{\pi}^{t} = \mathtt{Softmax} \left( \bm{\mathsf{z}}^{t} \right)\) 并且 \(\bm{\mathsf{z}}^{t} = h_{\bm{\theta}} \left( \bm{\mathsf{x}} \right)\)。一步学习动态可以被分解为：
-\begin{equation}\label{eq:SGD-decomposition}
-\begin{aligned}
-    &\underbrace{\nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\theta}^{t}}}_{\mathbb{R}^{V \times D}} \cdot \underbrace{\left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right)}_{\mathbb{R}^{D \times 1}} \\
-    &= - \eta \mathcal{A}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mathcal{K}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}}, \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) \mathcal{G}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) + \bigO \left( \eta^{2} \left\| \left[ \nabla_{\bm{\theta}} \bm{\mathsf{z}}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) \mid_{\bm{\theta}^{t}}  \right]^{\top} \right\|^{2}_{\texttt{op}} \right)
-\end{aligned}
-\end{equation}
-其中，\( \mathcal{A}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) = \nabla_{\bm{\mathsf{z}}} \log \bm{\pi}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}} = \mathbf{I} - \mathbf{J}_{V \times 1} \left[ \bm{\pi}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \right]^{\top} \)，其中 \(\mathbf{J}_{V \times 1}\) 代表大小为 \(V \times 1\) 的全 \(1\) 矩阵；\(\mathcal{K}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}}, \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) = \nabla_{\bm{\theta}} \log \bm{\mathsf{z}}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}} \cdot \left( \nabla_{\bm{\theta}} \bm{\mathsf{z}}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) \mid_{\bm{\theta}^{t}} \right)^{\top}\) 是 logit 网络 \(\bm{\mathsf{z}}^{t}\) 的经验神经切线核（the empirical  neural tangent kernel）；\(\mathcal{G}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) = \left[ \nabla_{\bm{\mathsf{z}}} \mathcal{L} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \mid_{\bm{\mathsf{z}}^{t}} \right]^{\top}\)。
-\end{proposition}
-
-在上述分解中，令 \(\bm{\pi}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)\) 代表 \(\pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)\)。
-如果使用 \(\bm{\pi}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) = \left[ \pi_{1}^{t}, \dots, \pi_{V}^{t} \right]^{\top}\) 代表模型在不同维度的预测概率。
-并且我们已知 \(\bm{\pi}^{t}\) 是对 logits 向量~\footnote{此时 \(L=1\)，logits 矩阵就变成了 logits 向量。} \(\bm{\mathsf{z}}^{t} = \left[ z_{1}^{t}, \dots, z_{V}^{t} \right]^{\top}\) 进行 \texttt{Softmax} 操作，归一化得到的概率分布：
-\[
-\begin{aligned}
-    \log \pi_{i}^{t} &= \log \frac{\exp \left( z_{i}^{t} \right)}{\sum_{k}^{V} \exp \left( z_{k}^{t} \right)} \\
-    &= z_{i}^{t} - \log \left( \sum_{k}^{V} \exp \left( z_{k}^{t} \right) \right)
-\end{aligned}
-\]
-所以：
-\[
-    \frac{\partial \log \pi_{i}^{t}}{\partial z_{k}^{t}} = \delta_{i,k} - \pi_{k}^{t}
-\]
-其中，\(\delta_{i,k}\) 是 Kronecker delta 函数，当 \(i=k\) 时为 \(1\)，否则为 \(0\)。
-所以，我们可以将 \(\mathcal{A}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)\) 进一步分解为：
-\begin{equation}
-    \mathcal{A}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) = \nabla_{\bm{\mathsf{z}}} \log \bm{\pi}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}} = \mathbf{I} - \mathbf{J}_{V \times 1} \left[ \bm{\pi}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \right]^{\top} = 
-    \left[            
-    \begin{array}{cccc} 
-        1 - \pi_{1}^{t} & \pi_{1}^{t} & \cdots & \pi_{1}^{t} \\
-        - \pi_{2}^{t} & 1 - \pi_{2}^{t} & \cdots & - \pi_{2}^{t} \\
-        \vdots & \cdots & \ddots & \vdots \\
-        - \pi_{V}^{t} & - \pi_{V}^{t} & \cdots & 1 - \pi_{V}^{t} \\
-    \end{array}
-    \right]
-\end{equation}
-
-对于 \(\mathcal{K}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}}, \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right)\)，其为 \(\textcolor{orange}{\bm{\mathsf{x}}_{o}}\) 和 \(\textcolor{cyan}{\bm{\mathsf{x}}_{u}}\) 两者梯度的积。
-直观的说，如果它们的梯度方向相似，则这个矩阵的 Frobenius 范数很大，反之亦然。
-这个矩阵被称为经验神经切线核，可以随着网络的“相似性（similarity）”概念的发展而在训练中发生变化。
-对于以非常小的学习率训练的适当初始化的非常宽（very wide）的网络，\(\mathcal{K}^{t}\) 在训练中几乎保持不变，其收敛到的 kernel 被称为 神经切线内核（neural tangent kernel）~\cite{DBLP:conf/nips/AroraDH0SW19,DBLP:conf/nips/JacotHG18}。
-一般来说，在理论分析中 \(\mathcal{K}^{t}\) 通常假设不变，但作者认为这个假设太强了，所以在这里只假设是相对稳定的。
-
-\begin{proof}[命题~\ref{prop:one_step_dynamics_decompose}]
-我们想知道：模型在“观察样本（observing example）” \(\textcolor{orange}{\bm{\mathsf{x}}_{o}}\) 上的预测（\(\textcolor{orange}{\hat{\bm{\mathsf{y}}}}\)）在一次参数更新（\(\bm{\theta}^{t} \to \bm{\theta}^{t+1}\)）后会怎么变化？
-首先对公式 (\ref{eq:SGD-learning_dynamic}) 在点 \(\bm{\theta}^{t}\) 处进行一阶泰勒展开（first-order Taylor expansion）：
-\begin{equation}\label{eq:SGD-learning_dynamic_taylor_expansion}
-\begin{aligned}
-    \log \pi_{\bm{\theta}^{t+1}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) &= \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) + \nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right) \\
-    & \qquad + \frac{1}{2} \left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right)^{\top} \nabla_{\bm{\theta}}^{2} \log \pi_{\xi} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right)
-\end{aligned}
-\end{equation}
-其中 \(\xi\) 是介于 \(\bm{\theta}^{t}\) 和 \(\bm{\theta}^{t+1}\) 之间的某个点~\footnote{这里可以参考 Taylor 展开的 Lagrange 形式的余项}。
-其上界与其最大奇异值有关，由谱范数（Spectral Norm）确定 \(\lambda_{\max}\) 来表示，下界则与其最小奇异值有关~\footnote{可以参考 谱范数（Spectral Norm）的性质：二次型的上界由谱范数确定，即 \(\bm{x}^{\top} \mathbf{H} \bm{x} \leq \left\| \mathbf{H} \right\|_{\texttt{op}}, \left\| \mathbf{H} \right\|_{\texttt{op}} = \underset{\left\|x\right\| = 1}{\sup} \bm{x}^{\top} \mathbf{H} \bm{x}\) 。并且这个上下界与最大最小特征值的关系可以参考 Rayleigh qutient，这个性质对于 complex Hermitian matrix 都成立，且实对称矩阵（在这里为 Hessian 矩阵）也是 Hermitian matrix 的一个特例。}：
-\[
-    \underset{\bm{\theta}^{t} \neq \bm{\theta}^{t+1}}{\sup} \left| \left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right)^{\top} \nabla_{\bm{\theta}}^{2} \log \pi_{\xi} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right) \right| = \left\| \nabla_{\bm{\theta}}^{2} \log \pi_{\xi} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \right\|_{\texttt{op}} \cdot \left\| \bm{\theta}^{t+1} - \bm{\theta}^{t} \right\|^{2}
-\]
-其中，\(\left\| \cdot \right\|^{2}_{\texttt{op}}\) 是谱范数（Spectral Norm），定义为矩阵的最大奇异值。
-
-所以：
-\begin{equation}\label{eq:SGD-learning_dynamic_taylor_expansion_bigO}
-\begin{aligned}
-    \log \pi_{\bm{\theta}^{t+1}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) &= \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) + \nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right) + \bigO \left( \left\| \bm{\theta}^{t+1} - \bm{\theta}^{t} \right\|^{2} \right)
-\end{aligned}
-\end{equation}
-这里的 \(O \left( \left\| \bm{\theta}^{t+1} - \bm{\theta}^{t} \right\|^{2} \right)\) 表示不超过 \(\left\| \bm{\theta}^{t+1} - \bm{\theta}^{t} \right\|^{2}\) 这个量级。
-
-并且，在 \(L=1\) 时， \(\nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right) = \left\langle \nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right), \bm{\theta}^{t+1} - \bm{\theta}^{t} \right\rangle\)，所以公式 (\ref{eq:SGD-learning_dynamic_taylor_expansion}) 就可以表示为 Ren et al.~\cite{DBLP:conf/iclr/RenS25} 工作中的原文形式：
-\begin{equation}\label{eq:SGD-learning_dynamic_taylor_expansion_bigO_vector}
-\begin{aligned}
-    \log \pi_{\bm{\theta}^{t+1}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) &= \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) + \left\langle \nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right), \bm{\theta}^{t+1} - \bm{\theta}^{t} \right\rangle + \bigO \left( \left\| \bm{\theta}^{t+1} - \bm{\theta}^{t} \right\|^{2} \right)
-\end{aligned}
-\end{equation}
-然后我们重新排列公式 (\ref{eq:SGD-learning_dynamic_taylor_expansion_bigO})，得到公式 (\ref{eq:SGD-learning_dynamic}) 中的 Talyor 展开形式：
-\[
-\begin{aligned}
-    \triangle \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\textsf{x}_{o}}} \right) &= \underbrace{\log \pi_{\bm{\theta}^{t+1}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)}_{\mathbb{R}^{V \times L}} - \underbrace{\log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)}_{\mathbb{R}^{V \times L}} \\
-    &= \underbrace{\nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)}_{\mathbb{R}^{V \times L \times D}} \underbrace{\left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right)}_{\mathbb{R}^{D \times 1}} + \bigO \left( \left\| \bm{\theta}^{t+1} - \bm{\theta}^{t} \right\|^{2} \right) \\
-\end{aligned}
-\]
-其中 \(D\) 是模型的参数量。
-然后假设模型使用“更新样本（updating example）” \(\left(\textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}}\right)\)，通过 SGD 完成参数更新。
-
-借助 \(\log\) 函数的性质，我们可以将 \(L\) 个样本进行拆分：
-\[
-\begin{aligned}
-    \underbrace{\nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)}_{\mathbb{R}^{V \times L \times D}} &= \nabla_{\bm{\theta}} \log \prod_{l=1}^{L} \underbrace{\pi_{\bm{\theta}^{t}}^{(l)} \left( \bm{\mathsf{y}}^{(l)} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}^{(l)}} \right)}_{\mathbb{R}^{V \times D}} \\
-    &= \sum_{l=1}^{L} \underbrace{ \nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}}^{(l)} \left( \bm{\mathsf{y}}^{(l)} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}^{(l)}} \right) }_{\mathbb{R}^{V \times D}}
-\end{aligned}
-\]
-
-所以，对于 \(\nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right)\) 这一项的评估，我们可以选取任意一个第 \(l\) 个样本所对应的项 \(\nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}}^{(l)} \left( \bm{\mathsf{y}}^{(l)} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}^{(l)}} \right)\)，这就退化成了 \(L=1\) 时的场景。
-\textcolor{magenta}{所以，我们在这里直接设 \(L=1\)，忽略样本数量来进行后续分析。}
-然后我们可以插入 SGD 的定义（可参考公式 (\ref{eq:GD-loss_iterative_update})），并重复利用链式法则：
-\begin{equation}\label{eq:SGD-decomposition-detail}
-\begin{aligned}
-    &\underbrace{\nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\theta}^{t}}}_{\mathbb{R}^{V \times D}} \cdot \underbrace{\left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right)}_{\mathbb{R}^{D \times 1}} \\
-    &= \left( \underbrace{\nabla_{\bm{\mathsf{z}}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}}}_{\mathbb{R}^{V \times V }} \cdot \underbrace{\nabla_{\bm{\theta}} \log \bm{\mathsf{z}}^{t} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\theta}^{t}}}_{\mathbb{R}^{V \times D}} \right) \cdot \left( - \eta \underbrace{\nabla_{\bm{\theta}} \mathcal{L} \left( f_{\bm{\theta}^{t}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \mid_{\bm{\theta}^{t}}}_{\mathbb{R}^{1 \times D}}  \right)^{\top} \\
-    &= \left( \underbrace{\nabla_{\bm{\mathsf{z}}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}}}_{\mathbb{R}^{V \times V}} \cdot \underbrace{\nabla_{\bm{\theta}} \log \bm{\mathsf{z}}^{t} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\theta}^{t}}}_{\mathbb{R}^{V \times D}} \right) \cdot \left( - \eta \underbrace{\nabla_{\bm{\mathsf{z}}} \mathcal{L} \left( f_{\bm{\theta}^{t}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \mid_{\bm{\mathsf{z}}^{t}}}_{\mathbb{R}^{1 \times V}} \cdot \underbrace{\nabla_{\bm{\theta}^{t}} \bm{\mathsf{z}}^{t} \left( f_{\bm{\theta}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \mid_{\bm{\theta}^{t}}}_{\mathbb{R}^{V \times D}}  \right)^{\top} \\
-     &= - \eta \underbrace{\nabla_{\bm{\mathsf{z}}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}}}_{\mathbb{R}^{V \times V}} \cdot \left[ \underbrace{\nabla_{\bm{\theta}} \log \bm{\mathsf{z}}^{t} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}}}_{\mathbb{R}^{V \times D}} \cdot \underbrace{ \left( \nabla_{\bm{\theta}} \bm{\mathsf{z}}^{t} \left( f_{\bm{\theta}^{t}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \mid_{\bm{\theta}^{t}} \right)^{\top}}_{\mathbb{R}^{D \times V}} \right] \cdot \underbrace{ \left[ \nabla_{\bm{\mathsf{z}}} \mathcal{L} \left( f_{\bm{\theta}^{t}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \mid_{\bm{\mathsf{z}}^{t}} \right]^{\top}}_{\mathbb{R}^{V \times 1}} \\
-     &= - \eta \mathcal{A}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mathcal{K}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}}, \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) \mathcal{G}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right)
-\end{aligned}
-\end{equation}
-对于公式 (\ref{eq:SGD-decomposition-detail})，我们需要注意：
+\# 这个环境中有以下限制：
 \begin{itemize}
-    \item \(\nabla_{\bm{\mathsf{z}}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}}\) 描述模型对于输入 \(\textcolor{orange}{\bm{\mathsf{x}}_{o}}\) 的预测标签 \(\bm{\mathsf{y}}\) 的置信度变化，\(\bm{\mathsf{y}}\) 是模型对所有可能标签的预测结果（\(\textcolor{orange}{\bm{\mathsf{x}}_{o}}\) 暂时没有对应的真实标签，也没参与更新模型权重），可以认为这里是一个占位符，该部分只有一个自变量 \(\textcolor{orange}{\bm{\mathsf{x}}_{o}}\)，所以我们可以使用\(\bm{\pi}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)\) 替代 \(\pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)\)。
-    \item \(\nabla_{\bm{\theta}} \log \bm{\mathsf{z}}^{t} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}}\) 描述当我们调整模型参数 \(\bm{\theta}\) 时，模型的输出的 logits 矩阵会发生什么样的变化，同样这里只有一个有用的自变量 \(\textcolor{orange}{\bm{\mathsf{x}}_{o}}\)。所以我们用 \(\bm{\mathsf{z}}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \) 代替 \(\bm{\mathsf{z}}^{t} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right)\)
-    \item \(\left( \nabla_{\bm{\theta}} \bm{\mathsf{z}}^{t} \left( f_{\bm{\theta}^{t}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \mid_{\bm{\theta}^{t}} \right)^{\top}\) 这部分描述模型前向传播中，调整参数 \(\bm{\theta}\)，如何影响最终 logits 矩阵的输出。这部分只依赖参数 \(\bm{\theta}\) 和 输入 \(\textcolor{cyan}{\bm{\mathsf{x}}_{u}}\)，与真实标签 \(\textcolor{cyan}{\bm{\mathsf{y}}_{u}}\) 无关，同样这里只有一个有用的自变量 \(\textcolor{cyan}{\bm{\mathsf{x}}_{u}}\)。所以我们用 \(\bm{\mathsf{z}}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right)\) 代替 \(\bm{\mathsf{z}}^{t} \left( f_{\bm{\theta}^{t}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right)\)
-    \item \(\left[ \nabla_{\bm{\mathsf{z}}} \mathcal{L} \left( f_{\bm{\theta}^{t}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \mid_{\bm{\mathsf{z}}^{t}} \right]^{\top}\) 这部分描述损失函数 \(\mathcal{L} \left( f_{\bm{\theta}^{t}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right)\) 如何受到输出 \(\bm{\mathsf{z}}^{t}\) 的影响。损失函数的计算中，需要通过对输入 \(\textcolor{cyan}{\bm{\mathsf{x}}_{u}}\) 进行预测（前向传播）得到预测标签 \(\textcolor{cyan}{\hat{\bm{\mathsf{y}}}_{u}}\)，然后与真实标签 \(\textcolor{cyan}{\bm{\mathsf{y}}_{u}}\) 一起计算交叉熵。所以，我们用 \(\mathcal{L} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right)\) 代替 \(\mathcal{L} \left( f_{\bm{\theta}^{t}} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right), \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right)\)。
+    \item 网格大小为 \(5 \times 5 = 25\)，机器人只能在该网格内移动。
+    \item 在每回合，机器人随机出生在 \(5 \times 5 = 25\) 的网格内的任意一空白随机点。
+    \item 机器人每次可以选择向上、下、左或右移动一个格子。
+    \item 对于障碍物所在的位置，机器人无法进入该位置。
+    \item 每当机器人到达垃圾或充电桩时，回合结束。
 \end{itemize}
-所以，公式 (\ref{eq:SGD-decomposition}) 可以被写为：
-\begin{equation}\label{eq:SGD-decomposition-simplified}
-\begin{aligned}
-    &\underbrace{\nabla_{\bm{\theta}} \log \pi_{\bm{\theta}^{t}} \left( \bm{\mathsf{y}} \mid \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\theta}^{t}}}_{\mathbb{R}^{V \times D}} \cdot \underbrace{\left( \bm{\theta}^{t+1} - \bm{\theta}^{t} \right)}_{\mathbb{R}^{D \times 1}} \\
-    &= - \eta \underbrace{\nabla_{\bm{\mathsf{z}}} \log \bm{\pi}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}}}_{\mathbb{R}^{V \times V}} \cdot \left[ \underbrace{\nabla_{\bm{\theta}} \log \bm{\mathsf{z}}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}}}_{\mathbb{R}^{V \times D}} \cdot \underbrace{ \left( \nabla_{\bm{\theta}} \bm{\mathsf{z}}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) \mid_{\bm{\theta}^{t}} \right)^{\top}}_{\mathbb{R}^{D \times V}} \right] \cdot \underbrace{ \left[ \nabla_{\bm{\mathsf{z}}} \mathcal{L} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \mid_{\bm{\mathsf{z}}^{t}} \right]^{\top}}_{\mathbb{R}^{V \times 1}} \\
-    &= - \eta \mathcal{A}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mathcal{K}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}}, \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) \mathcal{G}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right)
-\end{aligned}
-\end{equation}
-此处 \( \mathcal{A}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) = \nabla_{\bm{\mathsf{z}}} \log \bm{\pi}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}} \)，\(\mathcal{K}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}}, \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) = \nabla_{\bm{\theta}} \log \bm{\mathsf{z}}^{t} \left( \textcolor{orange}{\bm{\mathsf{x}}_{o}} \right) \mid_{\bm{\mathsf{z}}^{t}} \cdot \left( \nabla_{\bm{\theta}} \bm{\mathsf{z}}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) \mid_{\bm{\theta}^{t}} \right)^{\top}\)，\(\mathcal{G}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) = \left[ \nabla_{\bm{\mathsf{z}}} \mathcal{L} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \mid_{\bm{\mathsf{z}}^{t}} \right]^{\top}\)。
+\end{definition*}
 
-其中，我们可以利用上述的符号来表述参数 \(\bm{\theta}\) 的变化：
-\begin{equation}\label{eq:SGD-learning_dynamic_theta_decomposition}
-    \bm{\theta}^{t+1} - \bm{\theta}^{t} = - \eta \left[ \nabla_{\bm{\theta}} \bm{\mathsf{z}}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) \mid_{\bm{\theta}^{t}}  \right]^{\top} \mathcal{G}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right)
-\end{equation}
-并且将公式 (\ref{eq:SGD-learning_dynamic_theta_decomposition}) 代入上述的高阶项目，我们得到：
-\[
-    \bigO \left( \left\| \bm{\theta}^{t+1} - \bm{\theta}^{t} \right\|^{2} \right) = \bigO \left( \eta^{2} \cdot \left\| \left[ \nabla_{\bm{\theta}} \bm{\mathsf{z}}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) \mid_{\bm{\theta}^{t}}  \right]^{\top} \right\|^{2}_{\texttt{op}} \cdot \left\| \mathcal{G}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right) \right\|^{2}_{\texttt{op}}\right)
-\]
-这里残差项 \(\mathcal{G}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}}, \textcolor{cyan}{\bm{\mathsf{y}}_{u}} \right)\) 通常是有界的（参考引理~\ref{lemma:bounded_loss_gradient}），所以我们得到~\footnote{矩阵和其转置矩阵的奇异值是相同的，换句话说，\(\mathbf{A}\) 和 \(\mathbf{A}^{\top}\) 的奇异值集合是一样的。所以它们的谱范数是一样的，即 \( \left\| \mathbf{A} \right\|^{2}_{\texttt{op}} = \left\| \mathbf{A}^{\top} \right\|^{2}_{\texttt{op}} \)}：
-\[
-    \bigO \left( \left\| \bm{\theta}^{t+1} - \bm{\theta}^{t} \right\|^{2} \right) = \bigO \left( \eta^{2} \left\| \left[ \nabla_{\bm{\theta}} \bm{\mathsf{z}}^{t} \left( \textcolor{cyan}{\bm{\mathsf{x}}_{u}} \right) \mid_{\bm{\theta}^{t}}  \right]^{\top} \right\|^{2}_{\texttt{op}} \right)
-\]
-\end{proof}
+\begin{theorem*}{组成规则}
+    \# 在这个环境中有以下组成部分：
+    \begin{itemize}
+        \item 垃圾 (Trash): 位于网格的 \(\left( 5, 4 \right)\)（索引从 \(1\) 开始）。当机器人到达这个位置时，获得 \(+5\) 奖励，回合结束。
+        \item 充电桩 (Charger): 位于网格的 （索引从 \(1\) 开始）。当机器人到达这个位置时，获得 \(+1\) 奖励，回合结束。
+        \item 障碍物 (Obstacle): 位于网格的 \(\left( 3, 3 \right)\)（索引从 \(1\) 开始）。机器人无法进入该格子。
+    \end{itemize}
+\end{theorem*}
 
+\begin{proposition*}{环境限制}
+    
+\end{proposition*}
+
+\section{多开关匹配}
+
+\begin{definition*}{环境描述}
+    sdasdad asd
+\end{definition*}
+
+\section{Double Mountain Car}
+
+\begin{definition*}{环境描述}
+\# 问题描述
+
+    设计一个包含 两个山地车 的强化学习环境。该环境是经典离散动作的 MountainCar 问题的扩展版本~\footnote{如果你不熟悉 MountainCar 问题，请参考 \href{https://gymnasium.farama.org/environments/classic_control/mountain_car}{https://gymnasium.farama.org/environments/classic\_control/mountain\_car}。}，两个智能体（小车）必须协作，利用加速度在重力势能影响下成功爬坡，到达目标位置。两个小车可以分别独立控制，它们的任务是同时达到终点位置的目标状态，回合才会终止。这个问题与 MountainCar 问题几乎一致，但是可以帮助大家熟悉 gymnasium 库中的 \href{https://gymnasium.farama.org/api/spaces/fundamental/#gymnasium.spaces.Box}{spaces.Box} 和 \href{https://gymnasium.farama.org/api/spaces/fundamental/#gymnasium.spaces.MultiDiscrete}{spaces.MultiDiscrete} 这两个基础空间类。
+
+\# 具体要求
+
+对于这个问题的相关具体要求，可以仔细阅读并参考 MountainCar 问题的源代码 \href{https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/mountain_car.py}{gymnasium/envs/classic\_control/mountain\_car.py}。
+我们唯一需要做的事情就是将原本单个 Car 的状态空间与动作空间变成 两个 Car 的状态与动作空间。
+熟悉相关基础类，并初步入门多智能体控制。
+\end{definition*}
+
+\chapter{实验过程及结果}
+
+\section{SARAS}
+
+\section{Policy Gradient}
+
+\section{\(Q\)-Learning}
+
+\section{PPO}
 
 
 
@@ -267,39 +114,6 @@ Ren et al.~\cite{DBLP:conf/iclr/RenS25} 提到了，这个内容是对 Ren et al
 \printbibliography[heading=bibintoc, title=\ebibname]
 \appendix
 
-\chapter{文中用到的一些基本引理}
-
-\begin{lemma}\label{lemma:bounded_loss_gradient}
-    loss 函数对 logits 矩阵的梯度通常是有界。
-\end{lemma}
-
-\begin{proof}[引理~\ref{lemma:bounded_loss_gradient}]
-    例如，对于分类问题 或者 大语言模型（LLM）的训练中，交叉熵（Cross-Entropy）是最常用的损失函数。
-参考 \texttt{Softmax} （公式~\ref{eq:softmax}）和 交叉熵 的公式（公式~\ref{eq:cross_entropy_loss}）。
-\begin{equation}\label{eq:cross_entropy_loss-gradient}
-\begin{aligned}
-\nabla_{\bm{\mathsf{z}}} \mathcal{L} \left( f_{\bm{\theta}} \left( \bm{\mathsf{X}} \right), \bm{\mathsf{Y}} \right) &= - \frac{1}{N} \sum_{i=1}^{N} \frac{\partial \sum_{j=1}^{L} y^{(i)}_{j} \log \hat{y}^{(i)}_{j} }{\partial \bm{\mathsf{z}}^{(i)}} \\
-    &= - \frac{1}{N} \sum_{i=1}^{N} \sum_{k=1}^{V} \frac{\partial \sum_{j=1}^{L} y^{(i)}_{j} \log \hat{y}^{(i)}_{j} }{\partial z^{(i)}_{k}} \\
-    &= - \frac{1}{N} \sum_{i=1}^{N} \sum_{k=1}^{V} \left( y^{(i)}_{\texttt{ct}} \cdot \frac{1}{\hat{y}^{(i)}_{\texttt{ct}}} \cdot \frac{\partial \hat{y}^{(i)}_{\texttt{ct}}}{\partial z^{(i)}_{k}} + \sum_{j \neq \texttt{ct}} y^{(i)}_{j} \cdot \frac{1}{\hat{y}^{(i)}_{j}} \cdot \frac{\partial \hat{y}^{(i)}_{j}}{\partial z^{(i)}_{k}} \right) \\
-\end{aligned}
-\end{equation}
-其中 \(\texttt{ct}\) 是正确（correct）的类别的索引。
-我们知道 \texttt{Softmax} 对 logits 矩阵的分量 \(z^{(i)}_{k}\) 的梯度为：
-\[
-    \frac{\partial \hat{y}^{(i)}_{j}}{\partial z^{(i)}_{k}} = \hat{y}^{(i)}_{j} \left( \delta_{j,k} - \hat{y}^{(i)}_{k} \right)
-\]
-% \(\delta_{j,k}\) 是 Kronecker delta 函数，当 \(j=k\) 时为 \(1\)，否则为 \(0\)。
-公式 (\ref{eq:cross_entropy_loss-gradient}) 中的梯度可以进一步简化为：
-\begin{equation}\label{eq:cross_entropy_loss-gradient_simplified}
-\begin{aligned}
-\frac{\partial \mathcal{L} \left( f_{\bm{\theta}} \left( \bm{\mathsf{X}} \right), \bm{\mathsf{Y}} \right)}{\partial z_{k}^{(i)}}  &= - \sum_{j=1}^{V} y^{(i)}_{j} \cdot \frac{1}{\hat{y}^{(i)}_{j}} \cdot \hat{y}^{(i)}_{j} \left( \delta_{j,k} - \hat{y}^{(i)}_{k} \right) \\
-&= \hat{y}^{(i)}_{k} - y^{(i)}_{k}
-\end{aligned}
-\end{equation}
-注意，这里利用了 one-hot 编码的性质（只在一个量上为 \(1\)，其他量全为 \(0\)），所以只保留了 \(y^{(i)}_{\texttt{ct}}\) 这一项，消除了一个 \(\sum_{k=1}^{V}\)。
-
-对梯度的每一个维度，因为 \texttt{Softmax} 函数的性质：\(\hat{y}^{(i)}_{k} \in \left( 0, 1 \right)\)；对于正确类别，\(\frac{\partial \mathcal{L}}{\partial z_{k}^{(i)}} = \hat{y}^{(i)}_{k} - 1 \in \left(-1, 0\right)\)，对于错误的类别，\(\frac{\partial \mathcal{L}}{\partial z_{k}^{(i)}} = \hat{y}^{(i)}_{k} - 0 \in \left( 0, 1 \right)\)。
-也就是说上界是 \(1\)，下界是 \(- 1\)，所以损失函数对于 logits 矩阵的梯度是有界的。
-\end{proof}
+\chapter{appendix}
 
 \end{document}

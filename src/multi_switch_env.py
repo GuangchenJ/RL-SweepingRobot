@@ -13,7 +13,7 @@ class MultiSwitchEnv(gym.Env):
         super().__init__()
         self.num_switches = num_switches
 
-        # 状态空间和动作空间都是 MultiDiscrete: 每个开关两个状态 0/1
+        # 状态空间和动作空间都是 MultiBinary: 每个开关两个状态 0/1
         self.observation_space = spaces.MultiBinary(num_switches)
         self.action_space = spaces.MultiBinary(num_switches)  # 每个开关切或不切
 

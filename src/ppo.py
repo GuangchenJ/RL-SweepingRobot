@@ -1,23 +1,3 @@
-"""
-PPO Training & Evaluation – Double Mountain Car
-===============================================
-
-* Action space*: **Discrete(9)** (`NineToMultiAction`)
-* Reward*: dense shaping via `DenseRewardWrapper`
-* Normalisation*: `VecNormalize` for obs & reward
-
-All artefacts are written to **`res/double_mountain_car/`**.
-
-Plots generated (raw curve + EMA α = 0.95):
-* `reward_curve.png`   — episode reward
-* `episode_length.png` — episode length / steps
-* `success_rate.png`   — success rate (if `is_success` info present)
-
-TensorBoard is **disabled** to keep dependencies minimal.
-"""
-
-from __future__ import annotations
-
 from pathlib import Path
 from typing import Tuple
 
@@ -178,8 +158,8 @@ if monitor_file.exists():
         # 成功率：步数 < TimeLimit → 1，否则 0
         success = (df["l"] < MAX_EPISODE_STEPS).astype(int)
         plot_series(
-            success.rolling(50).mean().fillna(0),
-            "Success Rate (50-ep MA)",
+            compute_ema(success),
+            "Success Rate",
             "Rate",
             "success_rate.png",
         )

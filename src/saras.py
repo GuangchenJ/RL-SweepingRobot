@@ -65,17 +65,17 @@ def train_sarsa(env, episodes, alpha=0.1, gamma=0.99, epsilon=0.1):
 def visualize_policy_from_q(env, Q, save_path="sarsa_policy.png"):
     _, ax = plt.subplots(figsize=(10, 10))
     action_arrows = {
-        0: (0, 0.4),
-        1: (0, -0.4),
-        2: (-0.4, 0),
-        3: (0.4, 0),
+        0: (0, -0.4),  # 上：在倒序显示中，上变成了向下
+        1: (0, 0.4),  # 下：在倒序显示中，下变成了向上
+        2: (-0.4, 0),  # 左：保持不变
+        3: (0.4, 0),  # 右：保持不变
     }
-
     # 载入图标
     trash_img = mpimg.imread("icons/trash.png")
     charger_img = mpimg.imread("icons/charger.png")
     block_img = mpimg.imread("icons/block.png")
 
+    # 绘制网格线
     for i in range(env.size + 1):
         ax.axhline(y=i, color="gray", linewidth=0.5)
         ax.axvline(x=i, color="gray", linewidth=0.5)
@@ -84,23 +84,19 @@ def visualize_policy_from_q(env, Q, save_path="sarsa_policy.png"):
         for col in range(env.size):
             pos = np.array([row, col])
             center_x = col + 0.5
-            center_y = env.size - row - 0.5
+            center_y = row + 0.5
+
+            # 图片的extent也需要相应调整
+            img_extent = (col, col + 1, row, row + 1)
 
             if np.array_equal(pos, env._trash_location):
-                ax.imshow(
-                    trash_img, extent=(col, col + 1, env.size - row - 1, env.size - row)
-                )
+                ax.imshow(trash_img, extent=img_extent)
                 continue
             elif np.array_equal(pos, env._charging_station_location):
-                ax.imshow(
-                    charger_img,
-                    extent=(col, col + 1, env.size - row - 1, env.size - row),
-                )
+                ax.imshow(charger_img, extent=img_extent)
                 continue
             elif np.array_equal(pos, env._obstacle_location):
-                ax.imshow(
-                    block_img, extent=(col, col + 1, env.size - row - 1, env.size - row)
-                )
+                ax.imshow(block_img, extent=img_extent)
                 continue
 
             idx = state_to_index((row, col), env.size)

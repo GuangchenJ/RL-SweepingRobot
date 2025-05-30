@@ -117,7 +117,7 @@ def plot_training_results(
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
-    plt.show()
+    # plt.show()
 
     # 打印最终统计
     print("\n训练统计信息:")
@@ -138,12 +138,12 @@ def visualize_policy(env, policy_net, save_path="policy_visualization.png"):
 
     fig, ax = plt.subplots(1, 1, figsize=(10, 10))
 
-    # 动作箭头的方向
+    # 动作箭头的方向（调整上下方向）
     action_arrows = {
-        0: (0, 0.4),  # 上
-        1: (0, -0.4),  # 下
-        2: (-0.4, 0),  # 左
-        3: (0.4, 0),  # 右
+        0: (0, -0.4),  # 上：在倒序显示中，上变成了向下
+        1: (0, 0.4),  # 下：在倒序显示中，下变成了向上
+        2: (-0.4, 0),  # 左：保持不变
+        3: (0.4, 0),  # 右：保持不变
     }
 
     # 载入图标
@@ -161,24 +161,20 @@ def visualize_policy(env, policy_net, save_path="policy_visualization.png"):
         for col in range(env.size):
             pos = np.array([row, col])
             center_x = col + 0.5
-            center_y = env.size - row - 0.5
+            center_y = row + 0.5  # 直接使用row，不再倒序
+
+            # 图片的extent也需要相应调整
+            img_extent = (col, col + 1, row, row + 1)
 
             # 特殊位置标记
             if np.array_equal(pos, env._trash_location):
-                ax.imshow(
-                    trash_img, extent=(col, col + 1, env.size - row - 1, env.size - row)
-                )
+                ax.imshow(trash_img, extent=img_extent)
                 continue
             elif np.array_equal(pos, env._charging_station_location):
-                ax.imshow(
-                    charger_img,
-                    extent=(col, col + 1, env.size - row - 1, env.size - row),
-                )
+                ax.imshow(charger_img, extent=img_extent)
                 continue
             elif np.array_equal(pos, env._obstacle_location):
-                ax.imshow(
-                    block_img, extent=(col, col + 1, env.size - row - 1, env.size - row)
-                )
+                ax.imshow(block_img, extent=img_extent)
                 continue
 
             # 获取该状态的动作概率
@@ -207,8 +203,8 @@ def visualize_policy(env, policy_net, save_path="policy_visualization.png"):
     ax.set_title(
         "The visualization of learned strategies\n(Arrow => Action, Transparency => Probability)"
     )
-    ax.set_xlabel("row")
-    ax.set_ylabel("col")
+    ax.set_xlabel("col")
+    ax.set_ylabel("row")
 
     plt.tight_layout()
     plt.savefig(save_path, dpi=300, bbox_inches="tight")
