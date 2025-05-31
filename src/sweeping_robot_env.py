@@ -276,9 +276,9 @@ class SweepingRobotEnv(gym.Env):
     def close(self):
         if self.window is not None:
             pygame.display.quit()
-            # pygame.quit() # pygame.quit()会卸载所有pygame模块，如果其他地方还需要 pygame，可能会出问题
+            # pygame.quit() # pygame.quit() 会卸载所有 pygame 模块，如果其他地方还需要 pygame，可能会出问题
             self.window = None
-        # 确保在所有pygame操作完成后才调用pygame.quit()
+        # 确保在所有 pygame 操作完成后才调用 pygame.quit()
         # 对于 RecordVideo, 只要 display 模块关闭即可，pygame.quit()可以在程序完全结束时调用
         if pygame.get_init():  # 检查 pygame 是否已初始化
             pygame.quit()

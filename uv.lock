@@ -2257,6 +2257,7 @@ dependencies = [
     { name = "ipykernel" },
     { name = "jupyter" },
     { name = "lightning" },
+    { name = "pygments" },
     { name = "stable-baselines3" },
     { name = "tensorboard" },
 ]
@@ -2267,6 +2268,7 @@ requires-dist = [
     { name = "ipykernel", specifier = ">=6.29.5" },
     { name = "jupyter", specifier = ">=1.1.1" },
     { name = "lightning", specifier = ">=2.5.1.post0" },
+    { name = "pygments", specifier = ">=2.19.1" },
     { name = "stable-baselines3", specifier = ">=2.6.0" },
     { name = "tensorboard", specifier = ">=2.19.0" },
 ]

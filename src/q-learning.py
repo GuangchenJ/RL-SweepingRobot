@@ -229,7 +229,7 @@ if __name__ == "__main__":
     # 设置随机种子以便复现
     np.random.seed(42)
 
-    env = MultiSwitchEnv(render_mode="rgb_array", num_switches=3)
+    env = MultiSwitchEnv(render_mode="human", num_switches=3)
     q_table = np.zeros([2] * 3 + [2] * 3)  # Q-table shape: (2,2,2,2,2,2)
 
     # 超参数
