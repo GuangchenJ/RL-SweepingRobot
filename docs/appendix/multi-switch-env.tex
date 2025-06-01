@@ -1,0 +1,55 @@
+在这部分，展示我实现的多开关匹配的环境代码，代码接口符合 Gymnasium 的标准。
+
+\begin{minted}[frame=single, fontsize=\small, linenos, breaklines]{python}
+import sys
+import time
+
+import gymnasium as gym
+import numpy as np
+from gymnasium import spaces
+
+
+class MultiSwitchEnv(gym.Env):
+    metadata = {"render_modes": ["human"], "render_fps": 10}
+
+    def __init__(self, render_mode=None, num_switches=3):
+        super().__init__()
+        self.num_switches = num_switches
+
+        # 状态空间和动作空间都是 MultiBinary: 每个开关两个状态 0/1
+        self.observation_space = spaces.MultiBinary(num_switches)
+        self.action_space = spaces.MultiBinary(num_switches)  # 每个开关切或不切
+
+        self.target_state = np.random.randint(0, 2, size=num_switches)
+        self.state = None
+        self.render_mode = render_mode
+        self.steps = 0
+        self.max_steps = 5
+
+    def reset(self, seed=None, options=None):
+        super().reset(seed=seed)
+        self.state = self.np_random.integers(0, 2, size=self.num_switches)
+        self.steps = 0
+        return self.state.copy(), {}
+
+    def step(self, action):
+        self.steps += 1
+
+        # 应用动作: 切换值（异或操作）
+        self.state = (self.state + action) % 2
+
+        done = np.array_equal(self.state, self.target_state)
+        reward = 1.0 if done else -0.1
+        truncated = self.steps >= self.max_steps
+
+        return self.state.copy(), reward, done, truncated, {}
+
+    def render(self):
+        output = f"\rCurrent State: {self.state} | Target: {self.target_state}"
+        sys.stdout.write(output)
+        sys.stdout.flush()
+        time.sleep(0.3)
+
+    def close(self):
+        pass
+\end{minted}

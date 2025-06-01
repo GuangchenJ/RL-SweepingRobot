@@ -1,0 +1,64 @@
+对于我创建的 Double Mountain Car 环境，是仿造经典的离散动作版本的 MountainCar 问题的扩展版本，具体代码可以参考 \href{https://gymnasium.farama.org/environments/classic_control/mountain_car}{https://gymnasium.farama.org/environments/classic\_control/mountain\_car}。
+其环境的详细描述如下：
+
+\begin{definition*}{环境描述}
+\# 问题描述
+
+    设计一个包含 两个山地车 的强化学习环境。该环境是经典离散动作的 MountainCar 问题的扩展版本~\footnote{如果你不熟悉 MountainCar 问题，请参考 \href{https://gymnasium.farama.org/environments/classic_control/mountain_car}{https://gymnasium.farama.org/environments/classic\_control/mountain\_car}。}，两个智能体（小车）必须协作，利用加速度在重力势能影响下成功爬坡，到达目标位置。两个小车可以分别独立控制，它们的任务是同时达到终点位置的目标状态，回合才会终止。这个问题与 MountainCar 问题几乎一致，但是可以帮助大家熟悉 gymnasium 库中的 \href{https://gymnasium.farama.org/api/spaces/fundamental/#gymnasium.spaces.Box}{spaces.Box} 和 \href{https://gymnasium.farama.org/api/spaces/fundamental/#gymnasium.spaces.MultiDiscrete}{spaces.MultiDiscrete} 这两个基础空间类。
+
+\# 具体要求
+
+对于这个问题的相关具体要求，可以仔细阅读并参考 MountainCar 问题的源代码 \href{https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/envs/classic_control/mountain_car.py}{gymnasium/envs/classic\_control/mountain\_car.py}。
+我们唯一需要做的事情就是将原本单个 Car 的状态空间与动作空间变成 两个 Car 的状态与动作空间。
+熟悉相关基础类，并初步入门多智能体控制。
+\end{definition*}
+
+在此基础上，我舍弃了使用 \textsf{render} 进行可视化，而是使用 \textsf{spaces.Box} 构建小车的观测环境和使用 \href{https://gymnasium.farama.org/api/spaces/fundamental/#gymnasium.spaces.MultiDiscrete}{\textsf{spaces.MultiDiscrete}} 来构建里两个小车的联合动作。
+对于 \textsf{spaces.MultiDiscrete} 的使用，与 \textsf{spaces.MultiBinary} 类似，只是参数变成了 \textsf{np.array}。
+例如对于任天堂游戏手柄，可以离散化成 \(3\) 个离散的动作空间：
+\begin{itemize}
+    \item 方向键：\(5\) 个离散的元素 - NOOP [0]、上 [1]、右 [2]、下 [3]、左 [4] - 参数：最小值：\(0\)，最大值：\(4\)。
+    \item 按钮 A：\(2\) 个离散的元素 - NOOP [0]，按下 [1] - 参数：最小值：\(0\)，最大值：\(1\)。
+    \item 按钮 B：\(2\) 个离散的元素 - NOOP [0]，按下 [1] - 参数：最小值：\(0\)，最大值：\(1\)。
+\end{itemize}
+对应的空间代码为
+\begin{minted}[fontsize=\small, breaklines]{python}
+spaces.MultiDiscrete([ 5, 2, 2 ])
+\end{minted}
+
+
+而在我们的环境中，对应的是两个小车，各 \(3\) 个动作，而环境可以被视为一个简单的 \(4\)-维的 \textsf{spaces.Box}~\footnote{也可以通过 \textsf{spaces.Tuple} 和 \textsf{spaces.Box} 组合构建。} 所以动作和环境的初始化如下：
+\begin{minted}[fontsize=\small, breaklines]{python}
+
+...
+# State bounds for both cars
+self.low = np.array(
+    [
+        self.min_position,
+        -self.max_speed,  # Car 1
+        self.min_position,
+        -self.max_speed,  # Car 2
+    ],
+    dtype=np.float32,
+)
+
+self.high = np.array(
+    [
+        self.max_position,
+        self.max_speed,  # Car 1
+        self.max_position,
+        self.max_speed,  # Car 2
+    ],
+    dtype=np.float32,
+)
+...
+self.action_space = spaces.MultiDiscrete([3, 3])
+self.observation_space = spaces.Box(self.low, self.high, dtype=np.float32)
+...
+\end{minted}
+其他设置都和原始的 MountainCar 问题一致。
+而对于可视化操作，这里就没有实现。
+
+\subsection{实现代码}
+
+对于 Double Mountain Car 问题的环境的具体代码，请参考附录~\ref{sec:double-mountain-car-env}。

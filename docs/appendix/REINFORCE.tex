@@ -1,0 +1,472 @@
+在这部分，展示我实现的 REINFORCE 策略梯度算法代码，所用环境是扫地机器人。
+
+\begin{minted}[frame=single, fontsize=\small, linenos, breaklines]{python}
+import os
+
+import matplotlib.pyplot as plt
+import numpy as np
+import torch
+import torch.nn as nn
+import torch.nn.functional as F
+import torch.optim as optim
+from torch.distributions import Categorical
+from torch.optim.lr_scheduler import StepLR
+
+from sweeping_robot_env import SweepingRobotEnv
+
+
+# Policy Network 定义
+class PolicyNetwork(nn.Module):
+    def __init__(self, input_size, hidden_size, output_size):
+        super(PolicyNetwork, self).__init__()
+        self.fc1 = nn.Linear(input_size, hidden_size)
+        self.fc2 = nn.Linear(hidden_size, hidden_size)
+        self.fc3 = nn.Linear(hidden_size, output_size)
+
+        # 初始化权重
+        nn.init.xavier_uniform_(self.fc1.weight)
+        nn.init.xavier_uniform_(self.fc2.weight)
+        nn.init.xavier_uniform_(self.fc3.weight)
+
+        nn.init.zeros_(self.fc1.bias)
+        nn.init.zeros_(self.fc2.bias)
+        nn.init.zeros_(self.fc3.bias)
+
+    def forward(self, x):
+        x = F.relu(self.fc1(x))
+        x = F.relu(self.fc2(x))
+        x = self.fc3(x)
+        # 添加数值稳定性
+        # x = torch.clamp(x, min=-10, max=10)  # 防止过大的 logits
+        return F.softmax(x, dim=-1)
+
+
+def state_to_tensor(state, size):
+    """将状态转换为 one-hot 编码的张量"""
+    row, col = state
+    state_vector = torch.zeros(size * size)
+    state_vector[row * size + col] = 1
+    return state_vector
+
+
+def compute_returns(rewards, gamma):
+    """计算折扣回报"""
+    returns = []
+    running_return = 0
+    # 反向遍历所有的收益，计算折现收益
+    for r in reversed(rewards):
+        running_return = r + gamma * running_return
+        returns.insert(0, running_return)
+    return torch.tensor(returns, dtype=torch.float32)
+
+
+def compute_ema(data, alpha=0.9):
+    """计算指数移动平均(EMA)"""
+    ema = []
+    if len(data) > 0:
+        ema.append(data[0])
+        for i in range(1, len(data)):
+            ema.append(alpha * ema[-1] + (1 - alpha) * data[i])
+    return ema
+
+
+def plot_training_results(
+    episode_rewards,
+    episode_lengths,
+    episode_success_flags,
+    save_path="training_results_with_success.png",
+):
+    """绘制训练奖励、步数和成功率曲线"""
+    episodes = list(range(len(episode_rewards)))
+
+    # 计算EMA
+    ema_rewards = compute_ema(episode_rewards, alpha=0.99)
+    ema_lengths = compute_ema(episode_lengths, alpha=0.99)
+    success_rates = [
+        np.mean(episode_success_flags[max(0, i - 99) : i + 1]) * 100 for i in episodes
+    ]
+    ema_success = compute_ema(success_rates, alpha=0.95)
+
+    fig, axs = plt.subplots(3, 1, figsize=(12, 15))
+
+    # 奖励
+    axs[0].plot(episodes, episode_rewards, "b-", alpha=0.3, label="Reward")
+    axs[0].plot(episodes, ema_rewards, "r-", linewidth=2, label="EMA Reward (α=0.99)")
+    axs[0].set_title("Episode Total Reward")
+    axs[0].set_xlabel("Episode")
+    axs[0].set_ylabel("Reward")
+    axs[0].legend()
+    axs[0].grid(True, alpha=0.3)
+
+    # 步数
+    axs[1].plot(episodes, episode_lengths, "g-", alpha=0.3, label="Steps")
+    axs[1].plot(
+        episodes, ema_lengths, "orange", linewidth=2, label="EMA Steps (α=0.99)"
+    )
+    axs[1].set_title("Episode Length")
+    axs[1].set_xlabel("Episode")
+    axs[1].set_ylabel("Steps")
+    axs[1].legend()
+    axs[1].grid(True, alpha=0.3)
+
+    # 成功率
+    axs[2].plot(episodes, success_rates, "c-", alpha=0.3, label="Success Rate (100-ep)")
+    axs[2].plot(episodes, ema_success, "m-", linewidth=2, label="EMA Success (α=0.95)")
+    axs[2].set_title("Success Rate")
+    axs[2].set_xlabel("Episode")
+    axs[2].set_ylabel("Success Rate (%)")
+    axs[2].legend()
+    axs[2].grid(True, alpha=0.3)
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+    # plt.show()
+
+    # 打印最终统计
+    print("\n训练统计信息:")
+    print(f"最高奖励: {max(episode_rewards):.2f}")
+    print(f"最后 100 个 episode 平均奖励: {np.mean(episode_rewards[-100:]):.2f}")
+    print(f"最后 100 个 episode 平均步数: {np.mean(episode_lengths[-100:]):.2f}")
+    print(
+        f"最后 100 个 episode 成功率: {np.mean(episode_success_flags[-100:]) * 100:.2f}%"
+    )
+
+
+def visualize_policy(env, policy_net, save_path="policy_visualization.png"):
+    """可视化学习到的策略"""
+    import matplotlib.image as mpimg
+    import matplotlib.pyplot as plt
+    import numpy as np
+    import torch
+
+    fig, ax = plt.subplots(1, 1, figsize=(10, 10))
+
+    # 动作箭头的方向（调整上下方向）
+    action_arrows = {
+        0: (0, -0.4),  # 上：在倒序显示中，上变成了向下
+        1: (0, 0.4),  # 下：在倒序显示中，下变成了向上
+        2: (-0.4, 0),  # 左：保持不变
+        3: (0.4, 0),  # 右：保持不变
+    }
+
+    # 载入图标
+    trash_img = mpimg.imread("icons/trash.png")
+    charger_img = mpimg.imread("icons/charger.png")
+    block_img = mpimg.imread("icons/block.png")
+
+    # 绘制网格
+    for i in range(env.size + 1):
+        ax.axhline(y=i, color="gray", linewidth=0.5)
+        ax.axvline(x=i, color="gray", linewidth=0.5)
+
+    # 为每个状态绘制最优动作
+    for row in range(env.size):
+        for col in range(env.size):
+            pos = np.array([row, col])
+            center_x = col + 0.5
+            center_y = row + 0.5  # 直接使用row，不再倒序
+
+            # 图片的extent也需要相应调整
+            img_extent = (col, col + 1, row, row + 1)
+
+            # 特殊位置标记
+            if np.array_equal(pos, env._trash_location):
+                ax.imshow(trash_img, extent=img_extent)
+                continue
+            elif np.array_equal(pos, env._charging_station_location):
+                ax.imshow(charger_img, extent=img_extent)
+                continue
+            elif np.array_equal(pos, env._obstacle_location):
+                ax.imshow(block_img, extent=img_extent)
+                continue
+
+            # 获取该状态的动作概率
+            state_tensor = state_to_tensor((row, col), env.size).unsqueeze(0)
+            with torch.no_grad():
+                action_probs = policy_net(state_tensor).squeeze().numpy()
+
+            # 绘制动作箭头（根据概率调整透明度）
+            for action, prob in enumerate(action_probs):
+                if prob > 0.1:  # 只显示概率大于 0.1 的动作
+                    dx, dy = action_arrows[action]
+                    ax.arrow(
+                        center_x,
+                        center_y,
+                        dx * prob,
+                        dy * prob,
+                        head_width=0.1,
+                        head_length=0.1,
+                        fc="blue",
+                        alpha=prob,
+                    )
+
+    ax.set_xlim(0, env.size)
+    ax.set_ylim(0, env.size)
+    ax.set_aspect("equal")
+    ax.set_title(
+        "The visualization of learned strategies\n(Arrow => Action, Transparency => Probability)"
+    )
+    ax.set_xlabel("col")
+    ax.set_ylabel("row")
+
+    plt.tight_layout()
+    plt.savefig(save_path, dpi=300, bbox_inches="tight")
+
+
+def create_folder(path):
+    # 判断文件夹是否存在
+    if not os.path.exists(path):
+        # 如果文件夹不存在，则创建
+        os.makedirs(path)
+
+
+def train_policy_gradient(env, policy_net, optimizer, episodes, gamma=0.99):
+    """使用 REINFORCE 算法训练策略网络"""
+    episode_rewards = []
+    episode_lengths = []
+    success_count = 0
+    episode_success_flags = []
+
+    # 用于存储最近的成功轨迹
+    recent_successes = []
+
+    print("环境信息:")
+    print(f"- 垃圾位置: {env._trash_location}")
+    print(f"- 充电站位置: {env._charging_station_location}")
+    print(f"- 障碍物位置: {env._obstacle_location}\n")
+
+    for episode in range(episodes):
+        # 收集一个episode的数据
+        states = []
+        actions = []
+        rewards = []
+
+        obs, _ = env.reset()
+        done = False
+        total_reward = 0
+        steps = 0
+
+        # 动态调整最大步数
+        max_steps = min(100, 50 + episode // 20)  # 随着训练逐渐增加最大步数
+
+        while not done and steps < max_steps:  # 添加最大步数限制
+            # 将状态转换为张量
+            state_tensor = state_to_tensor(obs, env.size).unsqueeze(0)
+
+            # 获取动作概率分布
+            action_probs = policy_net(state_tensor)
+
+            # 采样动作
+            m = Categorical(action_probs)
+            action = m.sample()
+
+            # 执行动作
+            next_obs, reward, terminated, truncated, _ = env.step(action.item())
+
+            # 记录数据
+            states.append(state_tensor)
+            actions.append(action)
+            rewards.append(reward)
+
+            obs = next_obs
+            total_reward += reward
+            steps += 1
+            done = terminated or truncated
+
+        # 检查是否成功到达垃圾
+        if total_reward >= 5:
+            success_count += 1
+            recent_successes.append(
+                {
+                    "states": states.copy(),
+                    "actions": actions.copy(),
+                    "rewards": rewards.copy(),
+                }
+            )
+            # 只保留最近的成功轨迹
+            if len(recent_successes) > 10:
+                recent_successes.pop(0)
+            episode_success_flags.append(1)
+        else:
+            episode_success_flags.append(0)
+
+        episode_rewards.append(total_reward)
+        episode_lengths.append(steps)
+
+        # 计算回报
+        returns = compute_returns(rewards, gamma)
+
+        # 标准化回报（只有当有多个步骤时才标准化）,使用 baseline 减少方差
+        if len(returns) > 1:
+            baseline = returns.mean()
+            advantages = returns - baseline
+            advantages = (advantages - advantages.mean()) / (advantages.std() + 1e-8)
+        else:
+            # 如果只有一步，不进行标准化
+            advantages = returns
+
+        # 计算损失并更新网络
+        policy_loss = []
+        entropy_bonus = 0
+        for state, action, advantage in zip(states, actions, advantages):
+            action_probs = policy_net(state)
+            m = Categorical(action_probs)
+            policy_loss.append(-m.log_prob(action) * advantage)
+            # 动态调整熵正则化系数,随训练进度递减（从 0.4 降到 0.01）
+            # 早期阶段鼓励更多探索，后期减少探索
+            entropy_coef = max(0.1, 0.8 * (1 - episode / episodes))
+            entropy_bonus += m.entropy() * entropy_coef
+
+        # 如果有成功经验，偶尔从成功轨迹中学习（经验回放）
+        if len(recent_successes) > 0 and episode % 50 == 0:
+            # 随机选择一个成功轨迹
+            success_traj = recent_successes[np.random.randint(len(recent_successes))]
+            success_returns = compute_returns(success_traj["rewards"], gamma)
+
+            if len(success_returns) > 1:
+                success_baseline = success_returns.mean()
+                success_advantages = success_returns - success_baseline
+                success_advantages = (
+                    success_advantages - success_advantages.mean()
+                ) / (success_advantages.std() + 1e-8)
+            else:
+                success_advantages = success_returns
+
+            # 添加成功轨迹的损失
+            for state, action, advantage in zip(
+                success_traj["states"], success_traj["actions"], success_advantages
+            ):
+                action_probs = policy_net(state)
+                m = Categorical(action_probs)
+                policy_loss.append(
+                    -m.log_prob(action) * advantage * 0.5
+                )  # 降低权重避免过拟合
+
+        # 更新策略网络
+        if len(policy_loss) > 0:
+            optimizer.zero_grad()
+            loss = (
+                torch.stack(policy_loss).sum() - entropy_bonus
+            )  # 减去熵奖励（鼓励探索）
+
+            # 检查损失是否为 NaN
+            if torch.isnan(loss):
+                print(f"警告：Episode {episode} 出现 NaN 损失，跳过更新")
+                continue
+
+            loss.backward()
+
+            # 梯度裁剪，防止梯度爆炸
+            torch.nn.utils.clip_grad_norm_(policy_net.parameters(), max_norm=5.0)
+
+            optimizer.step()
+            # 学习率每 1000 个 episode 衰减 5%
+            scheduler.step()
+
+        # 打印进度
+        if episode % 100 == 0:
+            avg_reward = np.mean(episode_rewards[-100:])
+            avg_length = np.mean(episode_lengths[-100:])
+            success_rate = success_count / (episode + 1) * 100
+            recent_success_rate = (
+                sum(1 for r in episode_rewards[-100:] if r >= 5)
+                / min(100, len(episode_rewards))
+                * 100
+            )
+            print(
+                f"Episode {episode}, Average Reward (last 100): {avg_reward:.2f}, "
+                f"Average Length: {avg_length:.1f}, Success Rate: {success_rate:.1f}%, "
+                f"Recent Success Rate (100 steps): {recent_success_rate:.1f}%"
+            )
+
+    return episode_rewards, episode_lengths, episode_success_flags
+
+
+if __name__ == "__main__":
+    create_folder("res/sweep_robot/policy-gradient")
+
+    # 创建环境
+    env = SweepingRobotEnv(render_mode="rgb_array", size=5)
+
+    # 创建策略网络》
+    input_size = env.size * env.size  # one-hot编码的状态大小
+    hidden_size = 64
+    output_size = env.action_space.n
+
+    policy_net = PolicyNetwork(input_size, hidden_size, output_size)
+    # RMSProp 在策略梯度方法中通常效果更好，能够更平滑地更新参数
+    # optimizer = optim.RMSprop(policy_net.parameters(), lr=0.001, alpha=0.99, eps=1e-8)
+    # 使用 Adam 优化器，通常比 RMSprop 更稳定
+    optimizer = optim.Adam(policy_net.parameters(), lr=0.001)
+    # 每 1000 个 step（可以等价视为 episode）将学习率乘以 0.95
+    scheduler = StepLR(optimizer, step_size=1000, gamma=0.95)
+
+    # 训练参数
+    episodes = 10000
+    gamma = 0.995
+
+    print("开始训练Policy Gradient...")
+    episode_rewards, episode_lengths, episode_success_flags = train_policy_gradient(
+        env, policy_net, optimizer, episodes, gamma
+    )
+
+    # 绘制训练结果
+    print("\n绘制训练结果...")
+    plot_training_results(
+        episode_rewards,
+        episode_lengths,
+        episode_success_flags,
+        save_path="res/sweep_robot/policy-gradient/training_results.png",
+    )
+
+    # 可视化学习到的策略
+    print("\n可视化学习到的策略...")
+    visualize_policy(
+        env,
+        policy_net,
+        save_path="res/sweep_robot/policy-gradient/policy_visualization.png",
+    )
+
+    # 测试训练好的策略
+    print("\n测试训练好的策略...")
+    test_episodes = 2000
+    test_rewards = []
+    test_success = 0
+
+    for i in range(test_episodes):
+        obs, _ = env.reset()
+        done = False
+        total_reward = 0
+        steps = 0
+        path = [obs]
+
+        while not done and steps < 50:  # 限制最大步数防止死循环
+            state_tensor = state_to_tensor(obs, env.size).unsqueeze(0)
+            with torch.no_grad():
+                action_probs = policy_net(state_tensor)
+                action = torch.argmax(action_probs, dim=1).item()
+
+            obs, reward, terminated, truncated, _ = env.step(action)
+            path.append(obs)
+            total_reward += reward
+            done = terminated or truncated
+            steps += 1
+
+        test_rewards.append(total_reward)
+        if total_reward >= 5:
+            test_success += 1
+        print(f"\r测试Episode {i + 1}: 总奖励 = {total_reward}, 步数 = {steps}")
+
+    print(f"\n测试平均奖励: {np.mean(test_rewards):.2f}")
+    print(f"测试成功率: {test_success / test_episodes * 100:.1f}%")
+
+    # 保存模型
+    torch.save(
+        policy_net.state_dict(),
+        "res/sweep_robot/policy-gradient/policy_gradient_model.pth",
+    )
+    print("模型已保存为 'res/sweep_robot/policy-gradient/policy_gradient_model.pth'")
+
+    env.close()
+
+\end{minted}

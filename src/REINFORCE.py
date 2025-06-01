@@ -380,7 +380,7 @@ def train_policy_gradient(env, policy_net, optimizer, episodes, gamma=0.99):
 
 
 if __name__ == "__main__":
-    create_folder("res/sweep_robot/policy-gradient")
+    create_folder("res/sweep_robot/REINFORCE")
 
     # 创建环境
     env = SweepingRobotEnv(render_mode="rgb_array", size=5)
@@ -413,7 +413,7 @@ if __name__ == "__main__":
         episode_rewards,
         episode_lengths,
         episode_success_flags,
-        save_path="res/sweep_robot/policy-gradient/training_results.png",
+        save_path="res/sweep_robot/REINFORCE/training_results.png",
     )
 
     # 可视化学习到的策略
@@ -421,7 +421,7 @@ if __name__ == "__main__":
     visualize_policy(
         env,
         policy_net,
-        save_path="res/sweep_robot/policy-gradient/policy_visualization.png",
+        save_path="res/sweep_robot/REINFORCE/policy_visualization.png",
     )
 
     # 测试训练好的策略
@@ -460,8 +460,8 @@ if __name__ == "__main__":
     # 保存模型
     torch.save(
         policy_net.state_dict(),
-        "res/sweep_robot/policy-gradient/policy_gradient_model.pth",
+        "res/sweep_robot/REINFORCE/policy_gradient_model.pth",
     )
-    print("模型已保存为 'res/sweep_robot/policy-gradient/policy_gradient_model.pth'")
+    print("模型已保存为 'res/sweep_robot/REINFORCE/policy_gradient_model.pth'")
 
     env.close()
