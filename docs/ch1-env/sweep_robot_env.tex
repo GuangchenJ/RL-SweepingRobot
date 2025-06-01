@@ -53,12 +53,17 @@ spaces.Discrete(5)
 
 所以我们有两种解决办法，第一种是直接构建一个大小为 \(25\) 的“一维向量空间”，但我个人觉得这种办法不利于我们后续编程，会让简单的问题变得麻烦起来。
 第二种方法是将两个 \(5\) 个大小的空间做笛卡尔积，来实现 \(\left(\texttt{x}, \texttt{y}\right)\) 这样的二维空间。
-对于这个环境的空间，我们选择使用 \href{https://gymnasium.farama.org/api/spaces/composite/#gymnasium.spaces.Tuple}{\textsf{spaces.Tuple}} 方法将两个一维离散空间组合起来：
 \begin{minted}[fontsize=\small, breaklines]{python}
 self.observation_space = spaces.Tuple(
         (spaces.Discrete(size), spaces.Discrete(size))
     )
 \end{minted}
+第三种方法是使用 \href{https://gymnasium.farama.org/api/spaces/composite/#gymnasium.spaces.MultiDiscrete}{\textsf{spaces.MultiDiscrete}} 方法来构建一个多维离散空间。
+对于这个环境的空间，我们选择使用第三种方法：
+\begin{minted}[fontsize=\small, breaklines]{python}
+self.observation_space = spaces.MultiDiscrete([size, size])
+\end{minted}
+
 当然，{\textsf{spaces.Tuple}} 方法也可以链接任意多个任意个不同的空间，例如：
 \begin{minted}[fontsize=\small, breaklines]{python}
 Tuple((Discrete(2), Box(-1, 1, shape=(2,))))

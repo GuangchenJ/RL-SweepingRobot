@@ -13,9 +13,7 @@ class SweepingRobotEnv(gym.Env):
         self.window_size = 512
 
         # 定义状态空间，在这里状态空间等同于观测空间
-        self.observation_space = spaces.Tuple(
-            (spaces.Discrete(size), spaces.Discrete(size))
-        )
+        self.observation_space = spaces.MultiDiscrete([size, size])
         # 定义动作空间
         self.action_space = spaces.Discrete(4)
 
