@@ -62,7 +62,7 @@ class TrainingMonitor:
         # 添加EMA平滑线
         if len(self.episode_rewards) > 1:
             ema_rewards = self.compute_ema(self.episode_rewards, ema_alpha)
-            ax1.plot(ema_rewards, "b-", linewidth=2.5, label=f"EMA (α={ema_alpha})")
+            ax1.plot(ema_rewards, "b-", linewidth=2.5, label=f"EMA ($\alpha$={ema_alpha})")
         ax1.set_xlabel("Episode")
         ax1.set_ylabel("Total Reward")
         ax1.set_title("Episode Rewards Over Time")
@@ -74,7 +74,7 @@ class TrainingMonitor:
         ax2.plot(self.episode_lengths, "g-", alpha=0.3, linewidth=1, label="Raw Steps")
         if len(self.episode_lengths) > 1:
             ema_lengths = self.compute_ema(self.episode_lengths, ema_alpha)
-            ax2.plot(ema_lengths, "g-", linewidth=2.5, label=f"EMA (α={ema_alpha})")
+            ax2.plot(ema_lengths, "g-", linewidth=2.5, label=f"EMA ($\alpha$={ema_alpha})")
         ax2.set_xlabel("Episode")
         ax2.set_ylabel("Steps")
         ax2.set_title("Episode Length (Steps to Complete)")
@@ -98,7 +98,7 @@ class TrainingMonitor:
             )
             if len(success_rates) > 1:
                 ema_success = self.compute_ema(success_rates, ema_alpha)
-                ax3.plot(ema_success, "b-", linewidth=2.5, label=f"EMA (α={ema_alpha})")
+                ax3.plot(ema_success, "b-", linewidth=2.5, label=f"EMA ($\alpha$={ema_alpha})")
         ax3.set_xlabel("Episode")
         ax3.set_ylabel("Success Rate (%)")
         ax3.set_title("Success Rate")
@@ -112,7 +112,7 @@ class TrainingMonitor:
         if len(self.q_value_mean) > 1:
             ema_q_mean = self.compute_ema(self.q_value_mean, ema_alpha)
             ax4.plot(
-                ema_q_mean, color="purple", linewidth=2.5, label=f"EMA (α={ema_alpha})"
+                ema_q_mean, color="purple", linewidth=2.5, label=f"EMA ($\alpha$={ema_alpha})"
             )
         ax4.set_xlabel("Episode")
         ax4.set_ylabel("Mean Q-Value")
@@ -126,7 +126,7 @@ class TrainingMonitor:
         if len(self.q_value_max) > 1:
             ema_q_max = self.compute_ema(self.q_value_max, ema_alpha)
             ax5.plot(
-                ema_q_max, color="orange", linewidth=2.5, label=f"EMA (α={ema_alpha})"
+                ema_q_max, color="orange", linewidth=2.5, label=f"EMA ($\alpha$={ema_alpha})"
             )
         ax5.set_xlabel("Episode")
         ax5.set_ylabel("Max Q-Value")
@@ -143,7 +143,7 @@ class TrainingMonitor:
             if len(self.epsilon_values) > 1:
                 ema_epsilon = self.compute_ema(self.epsilon_values, ema_alpha)
                 ax6.plot(
-                    ema_epsilon, "red", linewidth=2.5, label=f"EMA (α={ema_alpha})"
+                    ema_epsilon, "red", linewidth=2.5, label=f"EMA ($\alpha$={ema_alpha})"
                 )
             ax6.set_xlabel("Episode")
             ax6.set_ylabel("Epsilon")
@@ -256,12 +256,12 @@ if __name__ == "__main__":
         total_reward = 0
         steps = 0
 
-        print(f"\nEpisode {episode + 1}/{episodes} (ε={epsilon:.3f})")
+        print(f"\nEpisode {episode + 1}/{episodes} ($\epsilon$={epsilon:.3f})")
 
         while not done and not truncated:
             obs_idx = tuple(obs)
 
-            # ε-贪婪策略
+            # $\epsilon$-贪婪策略
             if np.random.rand() < epsilon:
                 action = env.action_space.sample()
             else:

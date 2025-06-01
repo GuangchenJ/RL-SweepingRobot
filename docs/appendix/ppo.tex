@@ -115,7 +115,7 @@ print("Training finished. Model & VecNormalize saved.\n")
 
 
 # -------------------------------------------------------------------
-# 4.  Plot helper (raw + EMA α=0.9)
+# 4.  Plot helper (raw + EMA $\alpha$=0.9)
 # -------------------------------------------------------------------
 def compute_ema(arr, alpha: float = 0.9):
     """EMA, 支持 list / ndarray / Series，返回 ndarray"""
@@ -135,7 +135,7 @@ def plot_series(y, title: str, ylabel: str, fname: str):
     ema = compute_ema(y, alpha=0.95)
     plt.figure(figsize=(8, 5), dpi=120)
     plt.plot(x, y, alpha=0.3, label="raw")
-    plt.plot(x, ema, label="EMA α=0.95", lw=2)
+    plt.plot(x, ema, label="EMA $\alpha$=0.95", lw=2)
     plt.xlabel("Episode")
     plt.ylabel(ylabel)
     plt.title(title)

@@ -91,7 +91,7 @@ def plot_training_results(
 
     # 奖励
     axs[0].plot(episodes, episode_rewards, "b-", alpha=0.3, label="Reward")
-    axs[0].plot(episodes, ema_rewards, "r-", linewidth=2, label="EMA Reward (α=0.99)")
+    axs[0].plot(episodes, ema_rewards, "r-", linewidth=2, label="EMA Reward ($\alpha$=0.99)")
     axs[0].set_title("Episode Total Reward")
     axs[0].set_xlabel("Episode")
     axs[0].set_ylabel("Reward")
@@ -101,7 +101,7 @@ def plot_training_results(
     # 步数
     axs[1].plot(episodes, episode_lengths, "g-", alpha=0.3, label="Steps")
     axs[1].plot(
-        episodes, ema_lengths, "orange", linewidth=2, label="EMA Steps (α=0.99)"
+        episodes, ema_lengths, "orange", linewidth=2, label="EMA Steps ($\alpha$=0.99)"
     )
     axs[1].set_title("Episode Length")
     axs[1].set_xlabel("Episode")
@@ -111,7 +111,7 @@ def plot_training_results(
 
     # 成功率
     axs[2].plot(episodes, success_rates, "c-", alpha=0.3, label="Success Rate (100-ep)")
-    axs[2].plot(episodes, ema_success, "m-", linewidth=2, label="EMA Success (α=0.95)")
+    axs[2].plot(episodes, ema_success, "m-", linewidth=2, label="EMA Success ($\alpha$=0.95)")
     axs[2].set_title("Success Rate")
     axs[2].set_xlabel("Episode")
     axs[2].set_ylabel("Success Rate (%)")

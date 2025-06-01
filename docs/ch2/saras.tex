@@ -15,7 +15,7 @@ SARSA 的基本更新公式为：
     Q^{\texttt{new}} \left( s_t, a_t \right) \leftarrow  Q \left( s_t, a_t \right) + \alpha \left[ r_{t} + \gamma Q \left( s_{t+1}, a_{t+1} \right) - Q \left( s_t, a_t \right) \right]
 \]
 其中，\(\alpha\) 是学习率（learning rate），\(\gamma\) 是折扣因子（discount factor），衡量未来奖励的重要性。\(Q \left( S_t, A_t \right)\) 是状态-动作价值函数。
-整个算法可以参考算法~\ref{ alg:sarsa}。
+整个算法可以参考算法~\ref{alg:sarsa}。
 
 \begin{algorithm}[htbp]
 \caption{SARSA 算法}\label{alg:sarsa}
