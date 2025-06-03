@@ -34,11 +34,25 @@ REINFORCE 的梯度估计是无偏的，但由于直接用回报 \(R\) 乘以 \(
 算法归纳参考算法~\ref{agl:REINFORCE_replay}，其中包含熵正则项（Entropy Regularization）来鼓励策略的探索性，算法中参数的含义和具体实现参考后文中的小节~\ref{subsubsec:REINFORCE-state-action} 部分。
 
 \begin{algorithm}[htbp]
-\caption{带经验回放的 REINFORCE 策略梯度算法}\label{agl:REINFORCE_replay}
-\KwIn{策略网络 \( \pi_\theta(a \mid s) \)，折扣因子 \( \gamma \)，回放权重 \( \beta \)，初始熵系数 \( \lambda_{\texttt{init}} \)，最小熵系数 \( \lambda_{\texttt{min}} \)，学习率 \( \alpha \)，最大训练轮数 \( E \)，经验缓存上限 \( N \)，重放池大小 \(M\)，最大步数 \( T \)，经验回放频率 \( K \)}
+\caption{REINFORCE 策略梯度算法}\label{agl:REINFORCE_replay}
+\KwIn{
+    策略网络 $\pi_\theta(a \mid s)$, 
+    折扣因子 $\gamma$, 
+    回放权重 $\beta$, 
+    初始熵系数 $\lambda_{\texttt{init}}$, 
+    最小熵系数 $\lambda_{\texttt{min}}$, 
+    初始学习率 $\alpha_{\texttt{init}}$, 
+    学习率衰减因子 $\kappa$（$\kappa\in(0,1)$）, 
+    学习率衰减步数 $S$（每隔 $S$ 轮触发一次衰减）, 
+    最⼤训练轮数 $E$, 
+    成功轨迹缓存上限 $N$, 
+    重放频率 $K$, 
+    固定最大步数上限 $T$
+}
 \KwOut{最优策略参数 \( \theta \)}
 
 初始化成功轨迹缓存池：\( \mathcal{M} \leftarrow \emptyset \)\;
+设置当前学习率 $\alpha \leftarrow \alpha_{\texttt{init}}$ \;
 
 \For{\( \text{episode} = 1 \) \KwTo \( E \)}{
     初始化环境状态 \( s_0 \)\;
@@ -50,7 +64,7 @@ REINFORCE 的梯度估计是无偏的，但由于直接用回报 \(R\) 乘以 \(
         记录：\( S \gets S \cup \{s_t\} \)，\( A \gets A \cup \{a_t\} \)，\( R \gets R \cup \{r_t\} \)\;
     }
 
-    \If{\( 成功拾取垃圾 \)}{
+    \If{ 成功拾取垃圾 }{
         将 \( (S, A, R) \) 存入成功缓存 \( \mathcal{M} \)\;
         若 \( |\mathcal{M}| > N \)，则移除最旧轨迹\;
     }
@@ -62,17 +76,27 @@ REINFORCE 的梯度估计是无偏的，但由于直接用回报 \(R\) 乘以 \(
         \]
     }
 
-    计算当前轨迹损失：
+    计算 baseline：
+    \[
+    \bar{R} = \frac{1}{T+1} \sum_{t=0}^T R_t \;
+    \]
+    \For{$t = 0$ \KwTo $T$}{
+        计算 Advantage：
+        \[  
+        A_t \leftarrow \frac{\hat{A}_t - \mu}{\sigma + \varepsilon}, \quad \hat{A}_t = R_t - \bar{R}, \quad \mu = \text{mean}(\hat{A}_t), \sigma = \text{std}(\hat{A}_t), \varepsilon = \mathtt{1e-8}
+        \]
+    }
+
     \For{\( t = 0 \) \KwTo \( T \)}{
+        计算当前轨迹损失：
         \[
-        \mathcal{L}_t \left( \theta \right) = -  \sum_{t=0}^{T} \left[ \hat{A}_t \log \pi_{\theta} \left( a_t \mid s_t \right) + \lambda \cdot \mathcal{H} \left( \pi_{\theta} \left( a_t \mid s_t \right) \right) \right], \quad \lambda = \max \left( \lambda_{\texttt{min}}, \lambda_{\texttt{init}} \cdot \left( 1 - \frac{e}{E} \right) \right)
+        \mathcal{L}_t \left( \theta \right) = -  \sum_{t=0}^{T} \left[ A_t \log \pi_{\theta} \left( a_t \mid s_t \right) + \lambda \cdot \mathcal{H} \left( \pi_{\theta} \left( a_t \mid s_t \right) \right) \right], \quad \lambda = \max \left( \lambda_{\texttt{min}}, \lambda_{\texttt{init}} \cdot \left( 1 - \frac{e}{E} \right) \right)
         \]
     }
 
     \If{\( \text{episode} \bmod K = 0 \) \textbf{and} \( |\mathcal{M}| > 0 \)}{
         从 \( \mathcal{M} \) 中抽取一条成功轨迹 \( (S^{\prime}, A^{\prime}, R^{\prime}) \)\;
         重复上面步骤，计算其对应的回报 \( R^{\prime}_t \) 和损失 \( \mathcal{L}^{\prime}_t \)\;
-        合并总损失：\[ \mathcal{L}_t \leftarrow \mathcal{L}_t + \beta \cdot \sum_t \mathcal{L}^{\prime}_t; \]
         \For{\( t = 0 \) \KwTo \( M \)}{
             \textbf{累加：} \( \mathcal{L}_t \leftarrow \mathcal{L}_t + \beta \cdot \mathcal{L}_t^{\prime} \)
         }
@@ -82,10 +106,14 @@ REINFORCE 的梯度估计是无偏的，但由于直接用回报 \(R\) 乘以 \(
     \[
     \theta \leftarrow \theta - \alpha \nabla_\theta \sum_{t=0}^T \mathcal{L}_t
     \]
+
+    %—— 学习率调度 ——
+    \If{$episode \bmod S = 0$}{
+        $\alpha \leftarrow \alpha \times \kappa$\;
+    }
 }
 \Return{\( \theta \)}
 \end{algorithm}
-
 
 \subsection{算法实现细节}
 
@@ -169,7 +197,7 @@ m = Categorical(action_probs)
 熵越大，说明动作分布越均匀，策略越具有“探索性”。
 在策略优化中，我们将熵项作为额外奖励项添加至原始损失函数中，从而形成如下形式的目标函数，得到最终损失为：
 \begin{equation}
-    \mathcal{L} \left( \theta \right) = - \mathbb{E}_{\tau \sim \pi_{\theta}} \left[ \sum_{t=0}^{T} \hat{A}_t \log \pi_{\theta} \left( a_t \mid s_t \right) + \lambda \cdot \mathcal{H} \left( \pi_{\theta} \left( a_t \mid s_t \right) \right) \right]
+    \mathcal{L} \left( \theta \right) = - \mathbb{E}_{\tau \sim \pi_{\theta}} \left[ \sum_{t=0}^{T} A_t \log \pi_{\theta} \left( a_t \mid s_t \right) + \lambda \cdot \mathcal{H} \left( \pi_{\theta} \left( a_t \mid s_t \right) \right) \right]
 \end{equation}
 其中 \(\lambda\) 为熵正则项的权重系数，并会动态调整：
 \[
@@ -293,8 +321,7 @@ Replay Weight & 成功轨迹回放权重 & \( 0.5 \) \\
 
 此外，REINFORCE 算法固有的特性也加剧了这一问题：
 \begin{itemize}
-    \item 回合制更新限制：算法需等待整个回合结束后才能获得总回报。在奖励稀疏或环境复杂的情况下，这显著增加了陷入次优策略的风险。
-    \item  \textbf{反馈延迟}：由于回报基于回合总奖励，中间决策的优劣无法即时反馈给智能体。智能体需待回合结束方能评估决策正确性。若关键决策发生于回合后期，将导致梯度更新延迟，阻碍策略及时修正。
+    \item  \textbf{反馈延迟}：算法需等待整个回合结束后才能获得总回报。中间决策的优劣无法即时反馈给智能体。智能体需待回合结束方能评估决策正确性，这导致了难以识别关键决策。在奖励稀疏或环境复杂的情况下，这显著增加了陷入次优策略的风险。
     \item \textbf{稀疏奖励}：在仅终点（垃圾/充电桩）提供奖励的稀疏环境下，智能体需经历较长路径才能获得有效信息，极易因探索不足而固守次优策略。
     \item \textbf{更新噪声与不稳定性}：依赖整条轨迹回报进行全局更新，使得梯度易受随机噪声干扰，导致训练过程波动较大，难以收敛至全局最优策略。
 \end{itemize}
